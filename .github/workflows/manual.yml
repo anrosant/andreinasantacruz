@@ -1,0 +1,37 @@
+name: Update Start Date Field on Issue
+
+on:
+  issues:
+    types:
+      - edited
+
+jobs:
+  update-start-date:
+    runs-on: ubuntu-latest
+
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number }}
+      PROJECT_NUMBER: 1  # Replace with your project number
+      START_DATE: ${{ steps.set_start_date.outputs.START_DATE }}
+      PERSONAL_ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check Issue Status
+        id: check_status
+        run: |
+          echo "::set-output name=status::$(jq -r '.issue.body | fromjson | .status' $GITHUB_EVENT_PATH)"
+
+      - name: Set Start Date
+        id: set_start_date
+        if: ${{ steps.check_status.outputs.status == 'In progress' }}
+        run: |
+          echo "::set-output name=START_DATE::$(date --iso-8601=seconds)"
+
+      - name: Update Start Date via GitHub REST API
+        if: ${{ steps.check_status.outputs.status == 'In progress' }}
+        run: |
+          curl -X POST \
+            -H "Accept: application/vnd.github.inertia-preview+json" \
+            -H "Authorization: Bearer ${{ env.PERSONAL_ACCESS_TOKEN }}" \
+            -d '{"start_date": "${{ env.START_DATE }}"}' \
+            "https://api.github.com/projects/columns/${{ env.PROJECT_NUMBER }}/cards/$(curl -sH "Authorization: Bearer ${{ env.PERSONAL_ACCESS_TOKEN }}" "https://api.github.com/repos/${{ github.repository }}/issues/${{ env.ISSUE_NUMBER }}/cards" | jq -r '.[].id')"
